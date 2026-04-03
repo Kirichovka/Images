@@ -29,6 +29,10 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Validate image sizes
+        shell: pwsh
+        run: ./scripts/validate-images.ps1
+
       - name: Generate gallery
         shell: pwsh
         run: ./scripts/generate-gallery.ps1

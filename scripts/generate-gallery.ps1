@@ -58,6 +58,23 @@ function Convert-ToHtmlText {
     return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
+function Get-SizeState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [long]$Length
+    )
+
+    if ($Length -gt 200KB) {
+        return "error"
+    }
+
+    if ($Length -gt 100KB) {
+        return "warning"
+    }
+
+    return "ok"
+}
+
 $images = Get-ChildItem -Path $resolvedRepoRoot -Recurse -File |
     Where-Object {
         $relativePath = Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $_.FullName
@@ -74,9 +91,21 @@ $galleryItems = foreach ($image in $images) {
     $displayPath = Convert-ToHtmlText($relativePath.Replace("\", "/"))
     $displayName = Convert-ToHtmlText($image.Name)
     $displaySize = "{0:N1} KB" -f ($image.Length / 1KB)
+    $sizeState = Get-SizeState -Length $image.Length
+    $cardClass = "card"
+    $noticeMarkup = ""
 
-    @"
-        <article class="card">
+    if ($sizeState -eq "warning") {
+        $cardClass = "card card-warning"
+        $noticeMarkup = '<p class="size-notice" aria-label="Large file warning">Warning: file is larger than 100 KB and may slow down your site.</p>'
+    }
+    elseif ($sizeState -eq "error") {
+        $cardClass = "card card-error"
+        $noticeMarkup = '<p class="size-notice" aria-label="File too large">Error: file is larger than 200 KB and should be optimized before publishing.</p>'
+    }
+
+@"
+        <article class="$cardClass">
           <a class="preview" href="./$urlPath" target="_blank" rel="noreferrer">
             <img src="./$urlPath" alt="$displayName" loading="lazy">
           </a>
@@ -84,6 +113,7 @@ $galleryItems = foreach ($image in $images) {
             <h2>$displayName</h2>
             <p class="path">$displayPath</p>
             <p class="size">$displaySize</p>
+            $noticeMarkup
             <a class="direct-link" href="./$urlPath" target="_blank" rel="noreferrer">Open direct link</a>
           </div>
         </article>
@@ -227,6 +257,60 @@ $html = @"
         transition: transform 180ms ease, box-shadow 180ms ease;
       }
 
+      .card-warning {
+        border-color: rgba(184, 134, 11, 0.45);
+        box-shadow: 0 24px 48px rgba(184, 134, 11, 0.18);
+        background:
+          linear-gradient(180deg, rgba(255, 248, 214, 0.95), rgba(255, 252, 247, 0.88));
+      }
+
+      .card-warning .preview {
+        outline: 4px solid rgba(214, 168, 0, 0.26);
+        outline-offset: -4px;
+      }
+
+      .card-warning .meta h2::after {
+        content: "Large file";
+        display: inline-block;
+        margin-left: 10px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #725300;
+        background: rgba(244, 202, 68, 0.32);
+        border: 1px solid rgba(184, 134, 11, 0.25);
+        vertical-align: middle;
+      }
+
+      .card-error {
+        border-color: rgba(175, 57, 36, 0.4);
+        box-shadow: 0 24px 48px rgba(175, 57, 36, 0.2);
+        background:
+          linear-gradient(180deg, rgba(255, 233, 228, 0.96), rgba(255, 252, 247, 0.88));
+      }
+
+      .card-error .preview {
+        outline: 4px solid rgba(217, 93, 57, 0.28);
+        outline-offset: -4px;
+      }
+
+      .card-error .meta h2::after {
+        content: "Too large";
+        display: inline-block;
+        margin-left: 10px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #8a2d16;
+        background: rgba(217, 93, 57, 0.16);
+        border: 1px solid rgba(175, 57, 36, 0.24);
+        vertical-align: middle;
+      }
+
       .card:hover {
         transform: translateY(-4px);
         box-shadow: 0 24px 50px rgba(71, 51, 39, 0.18);
@@ -269,6 +353,23 @@ $html = @"
         font-size: 14px;
         line-height: 1.5;
         word-break: break-word;
+      }
+
+      .size-notice {
+        margin: 0;
+        padding: 10px 12px;
+        border-radius: 14px;
+        font-size: 14px;
+        line-height: 1.45;
+        border: 1px solid rgba(184, 134, 11, 0.25);
+        background: rgba(244, 202, 68, 0.18);
+        color: #6e5100;
+      }
+
+      .card-error .size-notice {
+        border-color: rgba(175, 57, 36, 0.22);
+        background: rgba(217, 93, 57, 0.12);
+        color: #8a2d16;
       }
 
       .direct-link {

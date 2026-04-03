@@ -5,6 +5,8 @@ This repository publishes images through GitHub Pages so they can be used as dir
 ## How it works
 
 - Every push to `main` rebuilds `index.html` and deploys the repository to GitHub Pages.
+- A pre-push size check warns for images larger than `100 KB`.
+- A pre-push size check blocks the push for images larger than `200 KB`.
 - Root files become available as `/filename.ext`.
 - Files in folders become available as `/folder/filename.ext`.
 
@@ -23,3 +25,8 @@ After GitHub Pages is enabled for this repository, the images will be available 
 3. Wait for the `Deploy GitHub Pages` workflow to finish.
 
 The gallery page is generated automatically by `scripts/generate-gallery.ps1`.
+
+## Size rules
+
+- `> 100 KB`: warning only, the image is still allowed and highlighted in yellow on the gallery page.
+- `> 200 KB`: error, the push is rejected and CI also fails until the file is optimized.
