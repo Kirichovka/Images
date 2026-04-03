@@ -1,5 +1,6 @@
 param(
-    [int]$WarningKilobytes = 100,
+    [string]$BaseRef,
+    [string]$HeadRef,
     [int]$ErrorKilobytes = 200
 )
 
@@ -19,8 +20,8 @@ $supportedExtensions = @(
     ".avif"
 )
 
-$warningBytes = $WarningKilobytes * 1KB
 $errorBytes = $ErrorKilobytes * 1KB
+$emptyTreeSha = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 function Get-RelativePath {
     param(
@@ -41,17 +42,65 @@ function Get-RelativePath {
     return $resolvedTargetPath.Substring($resolvedBasePath.Length).TrimStart('\', '/')
 }
 
-$images = Get-ChildItem -Path $repoRoot -Recurse -File |
-    Where-Object {
-        $relativePath = Get-RelativePath -BasePath $repoRoot -TargetPath $_.FullName
+function Get-OutgoingImageFiles {
+    param(
+        [string]$RepoRoot,
+        [string]$DiffBaseRef,
+        [string]$DiffHeadRef
+    )
+
+    $gitArgs = @("diff", "--name-only", "--diff-filter=ACMR", $DiffBaseRef, $DiffHeadRef, "--")
+    $changedPaths = & git @gitArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to determine changed files for validation."
+    }
+
+    foreach ($relativePath in $changedPaths) {
+        if ([string]::IsNullOrWhiteSpace($relativePath)) {
+            continue
+        }
+
         $normalizedRelativePath = $relativePath.Replace("\", "/")
+        if ($normalizedRelativePath -match '^(?:\.git|\.github|scripts|\.githooks)/') {
+            continue
+        }
 
-        $supportedExtensions -contains $_.Extension.ToLowerInvariant() -and
-        $normalizedRelativePath -notmatch '^(?:\.git|\.github|scripts|\.githooks)/'
-    } |
-    Sort-Object FullName
+        $fullPath = Join-Path $RepoRoot $relativePath
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            continue
+        }
 
-$warnings = @()
+        $file = Get-Item -LiteralPath $fullPath
+        if ($supportedExtensions -contains $file.Extension.ToLowerInvariant()) {
+            $file
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($HeadRef)) {
+    $HeadRef = "HEAD"
+}
+
+if ([string]::IsNullOrWhiteSpace($BaseRef)) {
+    $upstreamRef = $null
+    try {
+        $upstreamRef = (git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null).Trim()
+    }
+    catch {
+        $upstreamRef = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($upstreamRef)) {
+        $BaseRef = $emptyTreeSha
+    }
+    else {
+        $BaseRef = $upstreamRef
+    }
+}
+
+$images = Get-OutgoingImageFiles -RepoRoot $repoRoot -DiffBaseRef $BaseRef -DiffHeadRef $HeadRef |
+    Sort-Object FullName -Unique
+
 $errors = @()
 
 foreach ($image in $images) {
@@ -63,19 +112,14 @@ foreach ($image in $images) {
         continue
     }
 
-    if ($image.Length -gt $warningBytes) {
-        $warnings += "$($relativePath.Replace('\', '/')) - $sizeText exceeds ${WarningKilobytes} KB"
-    }
 }
 
-Write-Host "Scanned $($images.Count) image(s). Warning threshold: $WarningKilobytes KB. Error threshold: $ErrorKilobytes KB."
-
-if ($warnings.Count -gt 0) {
-    Write-Warning "Large images detected but allowed:"
-    foreach ($warning in $warnings) {
-        Write-Warning " - $warning"
-    }
+if ($images.Count -eq 0) {
+    Write-Host "No changed images detected in this push."
+    exit 0
 }
+
+Write-Host "Scanned $($images.Count) changed image(s). Push is blocked only for files above $ErrorKilobytes KB."
 
 if ($errors.Count -gt 0) {
     Write-Error "Images above ${ErrorKilobytes} KB were found. Reduce their size before pushing."

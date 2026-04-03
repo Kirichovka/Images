@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate image sizes
         shell: pwsh
-        run: ./scripts/validate-images.ps1
+        run: ./scripts/validate-images.ps1 -BaseRef '${{ github.event.before }}' -HeadRef '${{ github.sha }}'
 
       - name: Generate gallery
         shell: pwsh
