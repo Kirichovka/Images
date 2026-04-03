@@ -100,6 +100,75 @@
         font-size: 14px;
       }
 
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .secondary-button,
+      .ghost-button {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+        text-decoration: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+      }
+
+      .secondary-button {
+        color: white;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        box-shadow: 0 14px 28px rgba(217, 93, 57, 0.22);
+      }
+
+      .ghost-button {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(52, 36, 24, 0.12);
+      }
+
+      .uploader-panel {
+        margin-top: 28px;
+        background: linear-gradient(135deg, rgba(255, 250, 241, 0.94), rgba(250, 244, 233, 0.84));
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+      }
+
+      .uploader-panel h2 {
+        margin: 0 0 10px;
+        font-size: 30px;
+      }
+
+      .uploader-panel p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .uploader-points {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .uploader-point {
+        border-radius: 20px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(52, 36, 24, 0.1);
+      }
+
+      .uploader-point strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
       .gallery {
         margin-top: 28px;
         display: grid;
@@ -260,6 +329,233 @@
         font-size: 13px;
       }
 
+      .modal-shell {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: rgba(28, 20, 15, 0.56);
+        backdrop-filter: blur(8px);
+        z-index: 20;
+      }
+
+      .modal-shell.is-open {
+        display: flex;
+      }
+
+      .modal-card {
+        width: min(920px, 100%);
+        max-height: min(90vh, 980px);
+        overflow: auto;
+        background: #fffdf8;
+        border-radius: 28px;
+        border: 1px solid rgba(52, 36, 24, 0.12);
+        box-shadow: 0 30px 80px rgba(28, 20, 15, 0.26);
+      }
+
+      .modal-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 24px 24px 0;
+      }
+
+      .modal-head h3 {
+        margin: 0;
+        font-size: 30px;
+      }
+
+      .modal-head p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .modal-body {
+        padding: 24px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .upload-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .field input {
+        width: 100%;
+        padding: 13px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(52, 36, 24, 0.12);
+        background: rgba(255, 255, 255, 0.86);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .dropzone {
+        border-radius: 24px;
+        border: 2px dashed rgba(217, 93, 57, 0.26);
+        background:
+          linear-gradient(135deg, rgba(255, 246, 237, 0.9), rgba(255, 252, 247, 0.92));
+        padding: 28px;
+        text-align: center;
+        display: grid;
+        gap: 10px;
+      }
+
+      .dropzone.is-active {
+        border-color: rgba(217, 93, 57, 0.6);
+        background:
+          linear-gradient(135deg, rgba(255, 239, 227, 0.98), rgba(255, 251, 243, 0.95));
+      }
+
+      .dropzone strong {
+        font-size: 20px;
+      }
+
+      .dropzone p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .inline-note,
+      .upload-feedback {
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 16px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .inline-note {
+        background: rgba(255, 245, 230, 0.8);
+        border: 1px solid rgba(217, 93, 57, 0.16);
+        color: var(--muted);
+      }
+
+      .upload-feedback {
+        display: none;
+      }
+
+      .upload-feedback.is-visible {
+        display: block;
+      }
+
+      .upload-feedback.info {
+        background: rgba(255, 245, 230, 0.9);
+        border: 1px solid rgba(217, 93, 57, 0.18);
+        color: var(--text);
+      }
+
+      .upload-feedback.success {
+        background: rgba(231, 247, 236, 0.92);
+        border: 1px solid rgba(55, 130, 83, 0.18);
+        color: #245736;
+      }
+
+      .upload-feedback.error {
+        background: rgba(255, 233, 228, 0.96);
+        border: 1px solid rgba(175, 57, 36, 0.2);
+        color: #8a2d16;
+      }
+
+      .selected-files {
+        display: grid;
+        gap: 12px;
+      }
+
+      .selected-file {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 14px;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(52, 36, 24, 0.1);
+        background: rgba(255, 255, 255, 0.86);
+      }
+
+      .selected-file strong,
+      .selected-file span {
+        display: block;
+      }
+
+      .selected-file strong {
+        font-size: 16px;
+      }
+
+      .selected-file span {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .selected-file .badge {
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        border: 1px solid rgba(52, 36, 24, 0.1);
+        background: rgba(242, 239, 235, 0.9);
+      }
+
+      .selected-file.warning {
+        background: rgba(255, 247, 214, 0.9);
+        border-color: rgba(184, 134, 11, 0.28);
+      }
+
+      .selected-file.warning .badge {
+        background: rgba(244, 202, 68, 0.28);
+        color: #725300;
+        border-color: rgba(184, 134, 11, 0.22);
+      }
+
+      .selected-file.error {
+        background: rgba(255, 233, 228, 0.94);
+        border-color: rgba(175, 57, 36, 0.26);
+      }
+
+      .selected-file.error .badge {
+        background: rgba(217, 93, 57, 0.16);
+        color: #8a2d16;
+        border-color: rgba(175, 57, 36, 0.22);
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .action-group {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .status-note {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
       @media (max-width: 640px) {
         .shell {
           width: min(100% - 20px, 1200px);
@@ -268,6 +564,16 @@
 
         .hero-inner {
           padding: 24px 20px;
+        }
+
+        .modal-head,
+        .modal-body {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+
+        .selected-file {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -279,11 +585,36 @@
           <p class="eyebrow">GitHub Pages Image Library</p>
           <h1>Images ready for the web.</h1>
           <p class="lead">
-            Every file in this repository is published as a static asset. Open any preview to get a direct public URL you can use on your website.
+            Every file in this repository is published as a static asset. Open any preview to get a direct public URL you can use on your website, or upload new images from this page in a separate image-only commit.
           </p>
           <div class="stats">
-            <div class="stat">21 image(s)</div>
-            <div class="stat">Updated 2026-04-03 02:50:40</div>
+            <div class="stat">24 image(s)</div>
+            <div class="stat">Updated 2026-04-03 03:06:17</div>
+          </div>
+          <div class="hero-actions">
+            <button class="secondary-button" type="button" id="open-uploader">Upload images</button>
+            <a class="ghost-button" href="https://github.com/Kirichovka/Images/actions" target="_blank" rel="noreferrer">View deploy status</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="uploader-panel">
+        <h2>Separate image uploads from code pushes.</h2>
+        <p>
+          The uploader creates a dedicated Git commit with your selected images, so you can publish assets from the browser without mixing them into your local code workflow.
+        </p>
+        <div class="uploader-points">
+          <div class="uploader-point">
+            <strong>Browser upload</strong>
+            Images are committed directly to the repository through GitHub API.
+          </div>
+          <div class="uploader-point">
+            <strong>Safe token handling</strong>
+            Your GitHub token is used only in this tab and is never stored by this page.
+          </div>
+          <div class="uploader-point">
+            <strong>Same size rules</strong>
+            Files above 100 KB are marked as large, and files above 200 KB are blocked before upload.
           </div>
         </div>
       </section>
@@ -335,6 +666,30 @@
             <p class="size">64.3 KB</p>
             
             <a class="direct-link" href="./kids._cinema.jpg" target="_blank" rel="noreferrer">Open direct link</a>
+          </div>
+        </article>
+        <article class="card">
+          <a class="preview" href="./Logo%20(navbar%20full%20white)%20%20copy.svg" target="_blank" rel="noreferrer">
+            <img src="./Logo%20(navbar%20full%20white)%20%20copy.svg" alt="Logo (navbar full white)  copy.svg" loading="lazy">
+          </a>
+          <div class="meta">
+            <h2>Logo (navbar full white)  copy.svg</h2>
+            <p class="path">Logo (navbar full white)  copy.svg</p>
+            <p class="size">5.3 KB</p>
+            
+            <a class="direct-link" href="./Logo%20(navbar%20full%20white)%20%20copy.svg" target="_blank" rel="noreferrer">Open direct link</a>
+          </div>
+        </article>
+        <article class="card">
+          <a class="preview" href="./Logo%20(white%20film)%20%20copy.svg" target="_blank" rel="noreferrer">
+            <img src="./Logo%20(white%20film)%20%20copy.svg" alt="Logo (white film)  copy.svg" loading="lazy">
+          </a>
+          <div class="meta">
+            <h2>Logo (white film)  copy.svg</h2>
+            <p class="path">Logo (white film)  copy.svg</p>
+            <p class="size">5.6 KB</p>
+            
+            <a class="direct-link" href="./Logo%20(white%20film)%20%20copy.svg" target="_blank" rel="noreferrer">Open direct link</a>
           </div>
         </article>
         <article class="card">
@@ -541,11 +896,454 @@
             <a class="direct-link" href="./movies/Together-With-You-movie_fake_img_romantic.webp" target="_blank" rel="noreferrer">Open direct link</a>
           </div>
         </article>
+        <article class="card">
+          <a class="preview" href="./ScreenX.png" target="_blank" rel="noreferrer">
+            <img src="./ScreenX.png" alt="ScreenX.png" loading="lazy">
+          </a>
+          <div class="meta">
+            <h2>ScreenX.png</h2>
+            <p class="path">ScreenX.png</p>
+            <p class="size">53.5 KB</p>
+            
+            <a class="direct-link" href="./ScreenX.png" target="_blank" rel="noreferrer">Open direct link</a>
+          </div>
+        </article>
       </section>
 
       <footer>
         Repository root files are available at <code>/filename.ext</code>, nested files at <code>/folder/filename.ext</code>.
       </footer>
     </main>
+    <div class="modal-shell" id="uploader-modal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="uploader-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Browser Uploader</p>
+            <h3 id="uploader-title">Upload images to this repository</h3>
+            <p>
+              Use a fine-grained GitHub token with repository contents write access. The token stays only in this browser tab and is not saved by the page.
+            </p>
+          </div>
+          <button class="ghost-button" type="button" id="close-uploader">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="upload-grid">
+            <div class="field">
+              <label for="github-token">GitHub token</label>
+              <input id="github-token" type="password" autocomplete="off" placeholder="github_pat_..." spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="target-folder">Target folder</label>
+              <input id="target-folder" type="text" value="uploads" placeholder="uploads or movies">
+            </div>
+            <div class="field">
+              <label for="commit-message">Commit message</label>
+              <input id="commit-message" type="text" value="Upload images via gallery uploader" placeholder="Upload new images">
+            </div>
+          </div>
+
+          <div class="dropzone" id="dropzone">
+            <strong>Drop image files here</strong>
+            <p>or</p>
+            <div>
+              <button class="secondary-button" type="button" id="pick-files">Choose files</button>
+            </div>
+            <p>Supported: PNG, JPG, JPEG, GIF, WEBP, SVG, AVIF</p>
+            <input id="file-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif" hidden>
+          </div>
+
+          <p class="inline-note">
+            Files larger than 100 KB are allowed but marked as large. Files larger than 200 KB are blocked before upload.
+          </p>
+
+          <p class="upload-feedback" id="upload-feedback" role="status" aria-live="polite"></p>
+
+          <section>
+            <h4>Selected files</h4>
+            <div class="selected-files" id="selected-files">
+              <div class="empty-state">
+                <p>No files selected yet.</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="modal-actions">
+            <div class="status-note" id="status-note">Nothing to upload yet.</div>
+            <div class="action-group">
+              <button class="ghost-button" type="button" id="clear-files">Clear</button>
+              <button class="secondary-button" type="button" id="start-upload">Upload to repository</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.galleryConfig = {"errorBytes":204800,"owner":"Kirichovka","branch":"main","repo":"Images","warningBytes":102400,"defaultFolder":"uploads"};
+
+      (function () {
+        const config = window.galleryConfig;
+        const state = {
+          files: [],
+          uploading: false
+        };
+
+        const modal = document.getElementById('uploader-modal');
+        const openButton = document.getElementById('open-uploader');
+        const closeButton = document.getElementById('close-uploader');
+        const pickFilesButton = document.getElementById('pick-files');
+        const fileInput = document.getElementById('file-input');
+        const dropzone = document.getElementById('dropzone');
+        const selectedFiles = document.getElementById('selected-files');
+        const clearFilesButton = document.getElementById('clear-files');
+        const uploadButton = document.getElementById('start-upload');
+        const feedback = document.getElementById('upload-feedback');
+        const statusNote = document.getElementById('status-note');
+        const tokenInput = document.getElementById('github-token');
+        const folderInput = document.getElementById('target-folder');
+        const commitMessageInput = document.getElementById('commit-message');
+
+        function escapeHtml(value) {
+          return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function formatKilobytes(size) {
+          return (size / 1024).toFixed(1) + ' KB';
+        }
+
+        function getSizeState(size) {
+          if (size > config.errorBytes) {
+            return 'error';
+          }
+
+          if (size > config.warningBytes) {
+            return 'warning';
+          }
+
+          return 'ok';
+        }
+
+        function getSizeDescription(file) {
+          const stateName = getSizeState(file.size);
+          if (stateName === 'error') {
+            return 'Blocked: larger than 200 KB';
+          }
+
+          if (stateName === 'warning') {
+            return 'Large file: larger than 100 KB';
+          }
+
+          return 'Ready';
+        }
+
+        function sanitizeFolder(value) {
+          return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/').trim();
+        }
+
+        function setFeedback(kind, message) {
+          feedback.textContent = message;
+          feedback.className = 'upload-feedback is-visible ' + kind;
+        }
+
+        function clearFeedback() {
+          feedback.textContent = '';
+          feedback.className = 'upload-feedback';
+        }
+
+        function updateButtons() {
+          const hasFiles = state.files.length > 0;
+          const hasBlockedFiles = state.files.some(function (file) {
+            return getSizeState(file.size) === 'error';
+          });
+
+          uploadButton.disabled = state.uploading || !hasFiles || hasBlockedFiles;
+          clearFilesButton.disabled = state.uploading || !hasFiles;
+
+          if (!hasFiles) {
+            statusNote.textContent = 'Nothing to upload yet.';
+            return;
+          }
+
+          if (hasBlockedFiles) {
+            statusNote.textContent = 'At least one file is above 200 KB and must be optimized before upload.';
+            return;
+          }
+
+          const warningCount = state.files.filter(function (file) {
+            return getSizeState(file.size) === 'warning';
+          }).length;
+
+          if (warningCount > 0) {
+            statusNote.textContent = warningCount + ' file(s) are above 100 KB and will be marked as large.';
+            return;
+          }
+
+          statusNote.textContent = 'All selected files are ready for upload.';
+        }
+
+        function renderFiles() {
+          if (state.files.length === 0) {
+            selectedFiles.innerHTML = '<div class="empty-state"><p>No files selected yet.</p></div>';
+            updateButtons();
+            return;
+          }
+
+          selectedFiles.innerHTML = state.files.map(function (file) {
+            const stateName = getSizeState(file.size);
+            const className = stateName === 'ok' ? 'selected-file' : 'selected-file ' + stateName;
+            return '<article class="' + className + '">' +
+              '<div><strong>' + escapeHtml(file.name) + '</strong><span>' + formatKilobytes(file.size) + ' Â· ' + escapeHtml(getSizeDescription(file)) + '</span></div>' +
+              '<div class="badge">' + escapeHtml(stateName === 'ok' ? 'ready' : stateName) + '</div>' +
+              '</article>';
+          }).join('');
+
+          updateButtons();
+        }
+
+        function mergeFiles(fileList) {
+          const nextFiles = state.files.slice();
+          const seen = new Set(nextFiles.map(function (file) {
+            return file.name + '::' + file.size + '::' + file.lastModified;
+          }));
+
+          Array.from(fileList).forEach(function (file) {
+            const key = file.name + '::' + file.size + '::' + file.lastModified;
+            if (!seen.has(key)) {
+              seen.add(key);
+              nextFiles.push(file);
+            }
+          });
+
+          state.files = nextFiles;
+          clearFeedback();
+          renderFiles();
+        }
+
+        function openModal() {
+          modal.classList.add('is-open');
+          modal.setAttribute('aria-hidden', 'false');
+          clearFeedback();
+        }
+
+        function closeModal() {
+          if (state.uploading) {
+            return;
+          }
+
+          modal.classList.remove('is-open');
+          modal.setAttribute('aria-hidden', 'true');
+        }
+
+        async function githubRequest(path, options, token) {
+          const response = await fetch('https://api.github.com' + path, {
+            method: options.method || 'GET',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': 'Bearer ' + token,
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json'
+            },
+            body: options.body ? JSON.stringify(options.body) : undefined
+          });
+
+          if (!response.ok) {
+            let message = 'GitHub API request failed.';
+            try {
+              const data = await response.json();
+              if (data && data.message) {
+                message = data.message;
+              }
+            } catch (error) {
+            }
+
+            throw new Error(message);
+          }
+
+          if (response.status === 204) {
+            return {};
+          }
+
+          return response.json();
+        }
+
+        async function fileToBase64(file) {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const chunkSize = 32768;
+          let binary = '';
+
+          for (let index = 0; index < bytes.length; index += chunkSize) {
+            const chunk = bytes.subarray(index, index + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+
+          return btoa(binary);
+        }
+
+        async function uploadFiles() {
+          const token = tokenInput.value.trim();
+          const folder = sanitizeFolder(folderInput.value || config.defaultFolder);
+          const commitMessage = (commitMessageInput.value || '').trim() || 'Upload images via gallery uploader';
+
+          if (!config.owner || !config.repo) {
+            throw new Error('Repository information is missing from this page configuration.');
+          }
+
+          if (!token) {
+            throw new Error('Add a GitHub token before uploading.');
+          }
+
+          if (state.files.length === 0) {
+            throw new Error('Choose at least one image to upload.');
+          }
+
+          const blockedFile = state.files.find(function (file) {
+            return getSizeState(file.size) === 'error';
+          });
+          if (blockedFile) {
+            throw new Error('The file "' + blockedFile.name + '" is larger than 200 KB.');
+          }
+
+          const finalPaths = state.files.map(function (file) {
+            return folder ? folder + '/' + file.name : file.name;
+          });
+
+          if ((new Set(finalPaths)).size !== finalPaths.length) {
+            throw new Error('Two selected files resolve to the same target path.');
+          }
+
+          setFeedback('info', 'Uploading files to GitHub...');
+
+          const refName = encodeURIComponent(config.branch);
+          const refData = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/ref/heads/' + refName, {}, token);
+          const headSha = refData.object.sha;
+          const commitData = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/commits/' + headSha, {}, token);
+          const baseTreeSha = commitData.tree.sha;
+
+          const entries = [];
+          for (let index = 0; index < state.files.length; index += 1) {
+            const file = state.files[index];
+            const blob = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/blobs', {
+              method: 'POST',
+              body: {
+                content: await fileToBase64(file),
+                encoding: 'base64'
+              }
+            }, token);
+
+            entries.push({
+              path: finalPaths[index],
+              mode: '100644',
+              type: 'blob',
+              sha: blob.sha
+            });
+          }
+
+          const tree = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/trees', {
+            method: 'POST',
+            body: {
+              base_tree: baseTreeSha,
+              tree: entries
+            }
+          }, token);
+
+          const commit = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/commits', {
+            method: 'POST',
+            body: {
+              message: commitMessage,
+              tree: tree.sha,
+              parents: [headSha]
+            }
+          }, token);
+
+          await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/refs/heads/' + refName, {
+            method: 'PATCH',
+            body: {
+              sha: commit.sha,
+              force: false
+            }
+          }, token);
+
+          const uploadedSummary = finalPaths.join(', ');
+          setFeedback('success', 'Upload committed successfully. GitHub Pages will refresh after deployment. Uploaded: ' + uploadedSummary);
+          state.files = [];
+          fileInput.value = '';
+          renderFiles();
+        }
+
+        openButton.addEventListener('click', openModal);
+        closeButton.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (event) {
+          if (event.target === modal) {
+            closeModal();
+          }
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') {
+            closeModal();
+          }
+        });
+
+        pickFilesButton.addEventListener('click', function () {
+          fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function (event) {
+          mergeFiles(event.target.files);
+        });
+
+        ['dragenter', 'dragover'].forEach(function (eventName) {
+          dropzone.addEventListener(eventName, function (event) {
+            event.preventDefault();
+            dropzone.classList.add('is-active');
+          });
+        });
+
+        ['dragleave', 'drop'].forEach(function (eventName) {
+          dropzone.addEventListener(eventName, function (event) {
+            event.preventDefault();
+            if (eventName === 'drop') {
+              mergeFiles(event.dataTransfer.files);
+            }
+            dropzone.classList.remove('is-active');
+          });
+        });
+
+        clearFilesButton.addEventListener('click', function () {
+          if (state.uploading) {
+            return;
+          }
+
+          state.files = [];
+          fileInput.value = '';
+          clearFeedback();
+          renderFiles();
+        });
+
+        uploadButton.addEventListener('click', async function () {
+          if (state.uploading) {
+            return;
+          }
+
+          state.uploading = true;
+          updateButtons();
+
+          try {
+            await uploadFiles();
+          } catch (error) {
+            setFeedback('error', error.message || 'Upload failed.');
+          } finally {
+            state.uploading = false;
+            updateButtons();
+          }
+        });
+
+        renderFiles();
+      }());
+    </script>
   </body>
 </html>

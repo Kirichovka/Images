@@ -25,6 +25,17 @@ After GitHub Pages is enabled for this repository, the images will be available 
 
 The gallery page is generated automatically by `scripts/generate-gallery.ps1`.
 
+## Browser uploader
+
+The gallery page also includes a browser uploader so image uploads can be separated from local code pushes.
+
+- Open `Upload images` on the published page.
+- Paste a fine-grained GitHub token with repository contents write access.
+- Choose one or more images and upload them as a dedicated commit.
+- By default, browser uploads go into the `uploads/` folder.
+
+The token is used only in the current browser tab and is not stored by the page.
+
 ## Size rules
 
 - `> 100 KB`: allowed on push, but highlighted in yellow on the gallery page.
