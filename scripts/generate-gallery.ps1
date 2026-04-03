@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
-$outputPath = Join-Path $repoRoot "index.html"
+$resolvedRepoRoot = (Resolve-Path $repoRoot).Path.TrimEnd('\', '/')
+$outputPath = Join-Path $resolvedRepoRoot "index.html"
 
 $supportedExtensions = @(
     ".png",
@@ -24,10 +25,14 @@ function Get-RelativeWebPath {
         [string]$TargetPath
     )
 
-    $baseUri = [System.Uri]((Resolve-Path $BasePath).Path + [System.IO.Path]::DirectorySeparatorChar)
-    $targetUri = [System.Uri](Resolve-Path $TargetPath).Path
-    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
-    return [System.Uri]::UnescapeDataString($relativeUri.ToString())
+    $resolvedBasePath = (Resolve-Path $BasePath).Path.TrimEnd('\', '/')
+    $resolvedTargetPath = (Resolve-Path $TargetPath).Path
+
+    if (-not $resolvedTargetPath.StartsWith($resolvedBasePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path '$resolvedTargetPath' is not inside '$resolvedBasePath'."
+    }
+
+    return $resolvedTargetPath.Substring($resolvedBasePath.Length).TrimStart('\', '/')
 }
 
 function Convert-ToUrlPath {
@@ -53,17 +58,18 @@ function Convert-ToHtmlText {
     return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
-$images = Get-ChildItem -Path $repoRoot -Recurse -File |
+$images = Get-ChildItem -Path $resolvedRepoRoot -Recurse -File |
     Where-Object {
+        $relativePath = Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $_.FullName
+        $normalizedRelativePath = $relativePath.Replace("\", "/")
+
         $supportedExtensions -contains $_.Extension.ToLowerInvariant() -and
-        $_.FullName -notlike "$repoRoot\.git\*" -and
-        $_.FullName -notlike "$repoRoot\.github\*" -and
-        $_.FullName -notlike "$repoRoot\scripts\*"
+        $normalizedRelativePath -notmatch '^(?:\.git|\.github|scripts)/'
     } |
     Sort-Object FullName
 
 $galleryItems = foreach ($image in $images) {
-    $relativePath = Get-RelativeWebPath -BasePath $repoRoot -TargetPath $image.FullName
+    $relativePath = Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $image.FullName
     $urlPath = Convert-ToUrlPath -RelativePath $relativePath
     $displayPath = Convert-ToHtmlText($relativePath.Replace("\", "/"))
     $displayName = Convert-ToHtmlText($image.Name)
