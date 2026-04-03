@@ -98,8 +98,8 @@ if ([string]::IsNullOrWhiteSpace($BaseRef)) {
     }
 }
 
-$images = Get-OutgoingImageFiles -RepoRoot $repoRoot -DiffBaseRef $BaseRef -DiffHeadRef $HeadRef |
-    Sort-Object FullName -Unique
+$images = @(Get-OutgoingImageFiles -RepoRoot $repoRoot -DiffBaseRef $BaseRef -DiffHeadRef $HeadRef |
+    Sort-Object FullName -Unique)
 
 $errors = @()
 
