@@ -25,13 +25,14 @@ After GitHub Pages is enabled for this repository, the images will be available 
 
 The gallery page is generated automatically by `scripts/generate-gallery.ps1`.
 
-## Browser uploader
+## Browser media manager
 
-The gallery page also includes a browser uploader so image uploads can be separated from local code pushes.
+The gallery page also includes a browser media manager so image uploads and deletions can be separated from local code pushes.
 
-- Open `Upload images` on the published page.
+- Open `Open media manager` on the published page.
 - Paste a fine-grained GitHub token with repository contents write access.
-- Choose one or more images and upload them as a dedicated commit.
+- Use `Upload` to add one or more images as a dedicated commit.
+- Use `Delete` to remove an already published image as its own dedicated commit.
 - By default, browser uploads go into the `uploads/` folder.
 
 The token is used only in the current browser tab and is not stored by the page.

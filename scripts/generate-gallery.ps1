@@ -98,46 +98,83 @@ function Get-GitHubRepositoryInfo {
     }
 }
 
-$images = Get-ChildItem -Path $resolvedRepoRoot -Recurse -File |
-    Where-Object {
-        $relativePath = Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $_.FullName
-        $normalizedRelativePath = $relativePath.Replace("\", "/")
+$trackedPaths = @(git ls-files --)
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to read tracked files from git."
+}
 
-        $supportedExtensions -contains $_.Extension.ToLowerInvariant() -and
-        $normalizedRelativePath -notmatch '^(?:\.git|\.github|scripts)/'
-    } |
-    Sort-Object FullName
+$images = @(foreach ($trackedPath in $trackedPaths) {
+    if ([string]::IsNullOrWhiteSpace($trackedPath)) {
+        continue
+    }
 
-$galleryItems = foreach ($image in $images) {
-    $relativePath = Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $image.FullName
+    $normalizedRelativePath = $trackedPath.Replace("\", "/")
+    if ($normalizedRelativePath -match '^(?:\.git|\.github|scripts)/') {
+        continue
+    }
+
+    $fullPath = Join-Path $resolvedRepoRoot $trackedPath
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        continue
+    }
+
+    $file = Get-Item -LiteralPath $fullPath
+    if ($supportedExtensions -contains $file.Extension.ToLowerInvariant()) {
+        $file
+    }
+}) | Sort-Object FullName
+
+$imageCatalog = foreach ($image in $images) {
+    $relativePath = (Get-RelativeWebPath -BasePath $resolvedRepoRoot -TargetPath $image.FullName).Replace("\", "/")
     $urlPath = Convert-ToUrlPath -RelativePath $relativePath
-    $displayPath = Convert-ToHtmlText($relativePath.Replace("\", "/"))
-    $displayName = Convert-ToHtmlText($image.Name)
-    $displaySize = "{0:N1} KB" -f ($image.Length / 1KB)
+    $sizeLabel = "{0:N1} KB" -f ($image.Length / 1KB)
     $sizeState = Get-SizeState -Length $image.Length
+
+    [PSCustomObject]@{
+        name = $image.Name
+        path = $relativePath
+        urlPath = $urlPath
+        publicUrl = "./$urlPath"
+        sizeBytes = [int64]$image.Length
+        sizeLabel = $sizeLabel
+        modifiedLabel = $image.LastWriteTime.ToString("yyyy-MM-dd")
+        modifiedIso = $image.LastWriteTime.ToString("o")
+        state = $sizeState
+    }
+}
+
+$galleryItems = foreach ($catalogImage in $imageCatalog) {
+    $displayPath = Convert-ToHtmlText($catalogImage.path)
+    $displayName = Convert-ToHtmlText($catalogImage.name)
+    $displaySize = Convert-ToHtmlText($catalogImage.sizeLabel)
+    $displayPublicUrl = Convert-ToHtmlText($catalogImage.publicUrl)
+    $displayManagePath = Convert-ToHtmlText($catalogImage.path)
     $cardClass = "card"
     $noticeMarkup = ""
 
-    if ($sizeState -eq "warning") {
+    if ($catalogImage.state -eq "warning") {
         $cardClass = "card card-warning"
         $noticeMarkup = '<p class="size-notice" aria-label="Large file warning">Warning: file is larger than 100 KB and may slow down your site.</p>'
     }
-    elseif ($sizeState -eq "error") {
+    elseif ($catalogImage.state -eq "error") {
         $cardClass = "card card-error"
         $noticeMarkup = '<p class="size-notice" aria-label="File too large">Error: file is larger than 200 KB and should be optimized before publishing.</p>'
     }
 
 @"
         <article class="$cardClass">
-          <a class="preview" href="./$urlPath" target="_blank" rel="noreferrer">
-            <img src="./$urlPath" alt="$displayName" loading="lazy">
+          <a class="preview" href="$displayPublicUrl" target="_blank" rel="noreferrer">
+            <img src="$displayPublicUrl" alt="$displayName" loading="lazy">
           </a>
           <div class="meta">
             <h2>$displayName</h2>
             <p class="path">$displayPath</p>
             <p class="size">$displaySize</p>
             $noticeMarkup
-            <a class="direct-link" href="./$urlPath" target="_blank" rel="noreferrer">Open direct link</a>
+            <div class="card-actions">
+              <a class="direct-link" href="$displayPublicUrl" target="_blank" rel="noreferrer">Open direct link</a>
+              <button class="manage-link" type="button" data-open-manager="delete" data-image-path="$displayManagePath">Manage file</button>
+            </div>
           </div>
         </article>
 "@
@@ -153,6 +190,7 @@ $galleryConfigJson = @{
     warningBytes = 102400
     errorBytes = 204800
     defaultFolder = "uploads"
+    existingImages = $imageCatalog
 } | ConvertTo-Json -Compress
 
 if ($galleryItems.Count -eq 0) {
@@ -473,14 +511,33 @@ $html = @"
         color: #8a2d16;
       }
 
-      .direct-link {
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 2px;
+      }
+
+      .direct-link,
+      .manage-link {
         width: fit-content;
         text-decoration: none;
-        color: white;
-        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
         padding: 10px 14px;
         border-radius: 999px;
         font-size: 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .direct-link {
+        color: white;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      }
+
+      .manage-link {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(52, 36, 24, 0.14);
       }
 
       .empty-state {
@@ -498,60 +555,318 @@ $html = @"
         font-size: 13px;
       }
 
-      .modal-shell {
+      .manager-shell {
         position: fixed;
         inset: 0;
         display: none;
         align-items: center;
         justify-content: center;
         padding: 18px;
-        background: rgba(28, 20, 15, 0.56);
+        background: rgba(24, 18, 13, 0.58);
         backdrop-filter: blur(8px);
         z-index: 20;
       }
 
-      .modal-shell.is-open {
+      .manager-shell.is-open {
         display: flex;
       }
 
-      .modal-card {
-        width: min(920px, 100%);
-        max-height: min(90vh, 980px);
+      .manager-card {
+        width: min(1240px, 100%);
+        max-height: min(92vh, 1040px);
         overflow: auto;
-        background: #fffdf8;
-        border-radius: 28px;
-        border: 1px solid rgba(52, 36, 24, 0.12);
-        box-shadow: 0 30px 80px rgba(28, 20, 15, 0.26);
+        background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(246, 239, 228, 0.96));
+        border-radius: 34px;
+        border: 6px solid #17110d;
+        box-shadow: 0 38px 100px rgba(18, 12, 8, 0.34);
       }
 
       .modal-head {
         display: flex;
         justify-content: space-between;
-        gap: 16px;
-        padding: 24px 24px 0;
+        gap: 20px;
+        align-items: flex-start;
+        padding: 28px 28px 0;
       }
 
       .modal-head h3 {
         margin: 0;
-        font-size: 30px;
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 0.95;
       }
 
       .modal-head p {
         margin: 10px 0 0;
         color: var(--muted);
         line-height: 1.6;
+        max-width: 720px;
       }
 
-      .modal-body {
-        padding: 24px;
+      .mode-tabs {
+        display: inline-flex;
+        gap: 10px;
+        margin-top: 18px;
+        padding: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 2px solid rgba(23, 17, 13, 0.12);
+      }
+
+      .mode-tab {
+        appearance: none;
+        border: 2px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font: inherit;
+      }
+
+      .mode-tab.is-active {
+        border-color: #17110d;
+        background: #17110d;
+        color: #fff8f0;
+      }
+
+      .manager-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+        gap: 22px;
+        padding: 24px 28px 28px;
+      }
+
+      .preview-panel,
+      .control-panel {
+        border-radius: 28px;
+        border: 4px solid #17110d;
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .preview-panel {
+        padding: 18px;
         display: grid;
         gap: 18px;
       }
 
-      .upload-grid {
+      .preview-frame {
+        position: relative;
+        min-height: 520px;
+        border-radius: 24px;
+        border: 4px solid #17110d;
+        background:
+          linear-gradient(135deg, rgba(255, 252, 246, 0.98), rgba(249, 241, 226, 0.98));
+        overflow: hidden;
+      }
+
+      .preview-window {
+        width: 100%;
+        height: 100%;
+        min-height: 520px;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        place-items: center;
+        padding: 28px;
+      }
+
+      .preview-asset {
+        max-width: 100%;
+        max-height: 420px;
+        display: block;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 35px rgba(28, 20, 15, 0.12));
+      }
+
+      .preview-placeholder {
+        text-align: center;
+        display: grid;
+        gap: 12px;
+        color: var(--muted);
+      }
+
+      .preview-placeholder strong {
+        font-size: clamp(28px, 5vw, 48px);
+        color: var(--text);
+      }
+
+      .preview-arrow {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 62px;
+        height: 62px;
+        border-radius: 50%;
+        border: 4px solid #17110d;
+        background: rgba(255, 255, 255, 0.96);
+        color: #17110d;
+        font-size: 28px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .preview-arrow[disabled] {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .preview-arrow.prev {
+        left: 18px;
+      }
+
+      .preview-arrow.next {
+        right: 18px;
+      }
+
+      .preview-badge {
+        position: absolute;
+        top: 18px;
+        right: 18px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border: 2px solid #17110d;
+        background: rgba(255, 255, 255, 0.94);
+      }
+
+      .preview-badge.warning {
+        background: rgba(244, 202, 68, 0.3);
+        color: #725300;
+      }
+
+      .preview-badge.error {
+        background: rgba(217, 93, 57, 0.18);
+        color: #8a2d16;
+      }
+
+      .preview-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .meta-pair {
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 2px solid rgba(23, 17, 13, 0.12);
+        background: rgba(255, 255, 255, 0.82);
+      }
+
+      .meta-pair span {
+        display: block;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .meta-pair strong {
+        display: block;
+        font-size: 18px;
+        line-height: 1.25;
+        word-break: break-word;
+      }
+
+      .thumb-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+      }
+
+      .thumb-card {
+        position: relative;
+        padding: 10px;
+        border-radius: 22px;
+        border: 3px solid rgba(23, 17, 13, 0.16);
+        background: rgba(255, 255, 255, 0.82);
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .thumb-card.is-active {
+        border-color: #17110d;
+        transform: translateY(-2px);
+        box-shadow: 0 16px 30px rgba(28, 20, 15, 0.12);
+      }
+
+      .thumb-card.warning {
+        background: rgba(255, 247, 214, 0.92);
+      }
+
+      .thumb-card.error {
+        background: rgba(255, 233, 228, 0.94);
+      }
+
+      .thumb-card img {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        display: block;
+        border-radius: 16px;
+        border: 2px solid rgba(23, 17, 13, 0.12);
+        background: rgba(255, 250, 241, 0.9);
+      }
+
+      .thumb-label {
+        display: block;
+        margin-top: 10px;
+        font-size: 14px;
+        line-height: 1.3;
+        word-break: break-word;
+      }
+
+      .thumb-sub {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .thumb-remove {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 2px solid #17110d;
+        background: rgba(255, 255, 255, 0.98);
+        color: #17110d;
+        cursor: pointer;
+      }
+
+      .strip-empty {
+        padding: 18px;
+        border-radius: 20px;
+        border: 2px dashed rgba(23, 17, 13, 0.16);
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .control-panel {
+        padding: 18px;
+      }
+
+      .control-stack {
+        display: grid;
         gap: 16px;
+      }
+
+      .control-title {
+        display: grid;
+        gap: 8px;
+      }
+
+      .control-title h4 {
+        margin: 0;
+        font-size: 28px;
+      }
+
+      .control-title p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
       }
 
       .field {
@@ -566,33 +881,70 @@ $html = @"
 
       .field input {
         width: 100%;
-        padding: 13px 14px;
-        border-radius: 16px;
-        border: 1px solid rgba(52, 36, 24, 0.12);
-        background: rgba(255, 255, 255, 0.86);
+        padding: 16px 18px;
+        border-radius: 18px;
+        border: 4px solid #17110d;
+        background: rgba(255, 255, 255, 0.96);
         color: var(--text);
         font: inherit;
       }
 
+      .field input[readonly] {
+        background: rgba(242, 238, 231, 0.9);
+        color: #4e433a;
+      }
+
+      .mode-note,
+      .manager-feedback,
+      .selection-summary {
+        margin: 0;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 2px solid rgba(23, 17, 13, 0.12);
+        background: rgba(255, 255, 255, 0.84);
+        line-height: 1.55;
+      }
+
+      .manager-feedback {
+        display: none;
+      }
+
+      .manager-feedback.is-visible {
+        display: block;
+      }
+
+      .manager-feedback.info {
+        background: rgba(255, 245, 230, 0.94);
+      }
+
+      .manager-feedback.success {
+        background: rgba(231, 247, 236, 0.96);
+        color: #245736;
+      }
+
+      .manager-feedback.error {
+        background: rgba(255, 233, 228, 0.98);
+        color: #8a2d16;
+      }
+
       .dropzone {
         border-radius: 24px;
-        border: 2px dashed rgba(217, 93, 57, 0.26);
+        border: 4px dashed #17110d;
         background:
-          linear-gradient(135deg, rgba(255, 246, 237, 0.9), rgba(255, 252, 247, 0.92));
+          linear-gradient(135deg, rgba(255, 246, 237, 0.96), rgba(255, 252, 247, 0.98));
         padding: 28px;
         text-align: center;
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
 
       .dropzone.is-active {
-        border-color: rgba(217, 93, 57, 0.6);
         background:
-          linear-gradient(135deg, rgba(255, 239, 227, 0.98), rgba(255, 251, 243, 0.95));
+          linear-gradient(135deg, rgba(255, 239, 227, 0.98), rgba(255, 251, 243, 0.98));
       }
 
       .dropzone strong {
-        font-size: 20px;
+        font-size: 26px;
       }
 
       .dropzone p {
@@ -600,124 +952,55 @@ $html = @"
         color: var(--muted);
       }
 
-      .inline-note,
-      .upload-feedback {
-        margin: 0;
-        padding: 12px 14px;
-        border-radius: 16px;
-        font-size: 14px;
-        line-height: 1.5;
-      }
-
-      .inline-note {
-        background: rgba(255, 245, 230, 0.8);
-        border: 1px solid rgba(217, 93, 57, 0.16);
-        color: var(--muted);
-      }
-
-      .upload-feedback {
-        display: none;
-      }
-
-      .upload-feedback.is-visible {
-        display: block;
-      }
-
-      .upload-feedback.info {
-        background: rgba(255, 245, 230, 0.9);
-        border: 1px solid rgba(217, 93, 57, 0.18);
-        color: var(--text);
-      }
-
-      .upload-feedback.success {
-        background: rgba(231, 247, 236, 0.92);
-        border: 1px solid rgba(55, 130, 83, 0.18);
-        color: #245736;
-      }
-
-      .upload-feedback.error {
-        background: rgba(255, 233, 228, 0.96);
-        border: 1px solid rgba(175, 57, 36, 0.2);
-        color: #8a2d16;
-      }
-
-      .selected-files {
-        display: grid;
-        gap: 12px;
-      }
-
-      .selected-file {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 14px;
-        align-items: center;
-        padding: 14px 16px;
-        border-radius: 18px;
-        border: 1px solid rgba(52, 36, 24, 0.1);
-        background: rgba(255, 255, 255, 0.86);
-      }
-
-      .selected-file strong,
-      .selected-file span {
-        display: block;
-      }
-
-      .selected-file strong {
-        font-size: 16px;
-      }
-
-      .selected-file span {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 14px;
-        line-height: 1.45;
-      }
-
-      .selected-file .badge {
-        border-radius: 999px;
-        padding: 8px 12px;
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        white-space: nowrap;
-        border: 1px solid rgba(52, 36, 24, 0.1);
-        background: rgba(242, 239, 235, 0.9);
-      }
-
-      .selected-file.warning {
-        background: rgba(255, 247, 214, 0.9);
-        border-color: rgba(184, 134, 11, 0.28);
-      }
-
-      .selected-file.warning .badge {
-        background: rgba(244, 202, 68, 0.28);
-        color: #725300;
-        border-color: rgba(184, 134, 11, 0.22);
-      }
-
-      .selected-file.error {
-        background: rgba(255, 233, 228, 0.94);
-        border-color: rgba(175, 57, 36, 0.26);
-      }
-
-      .selected-file.error .badge {
-        background: rgba(217, 93, 57, 0.16);
-        color: #8a2d16;
-        border-color: rgba(175, 57, 36, 0.22);
-      }
-
-      .modal-actions {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-
+      .dropzone-actions,
       .action-group {
         display: flex;
-        gap: 12px;
         flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .secondary-button,
+      .ghost-button,
+      .danger-button {
+        appearance: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .secondary-button {
+        border: 3px solid #17110d;
+        color: #fff9f1;
+        background: #17110d;
+      }
+
+      .ghost-button {
+        border: 3px solid #17110d;
+        color: #17110d;
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      .danger-button {
+        border: 3px solid #7d2818;
+        color: #fff7f4;
+        background: #a33c25;
+      }
+
+      .secondary-button[disabled],
+      .ghost-button[disabled],
+      .danger-button[disabled],
+      .thumb-remove[disabled],
+      .mode-tab[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .control-actions {
+        display: grid;
+        gap: 14px;
+        padding-top: 8px;
       }
 
       .status-note {
@@ -735,13 +1018,23 @@ $html = @"
           padding: 24px 20px;
         }
 
-        .modal-head,
-        .modal-body {
+        .modal-head {
           padding-left: 18px;
           padding-right: 18px;
         }
 
-        .selected-file {
+        .manager-layout {
+          grid-template-columns: 1fr;
+          padding: 18px;
+        }
+
+        .preview-frame,
+        .preview-window {
+          min-height: 360px;
+        }
+
+        .preview-meta,
+        .thumb-strip {
           grid-template-columns: 1fr;
         }
       }
@@ -761,16 +1054,16 @@ $html = @"
             <div class="stat">Updated $lastUpdated</div>
           </div>
           <div class="hero-actions">
-            <button class="secondary-button" type="button" id="open-uploader">Upload images</button>
+            <button class="secondary-button" type="button" id="open-uploader">Open media manager</button>
             <a class="ghost-button" href="https://github.com/$($githubRepoInfo.owner)/$($githubRepoInfo.repo)/actions" target="_blank" rel="noreferrer">View deploy status</a>
           </div>
         </div>
       </section>
 
       <section class="uploader-panel">
-        <h2>Separate image uploads from code pushes.</h2>
+        <h2>Manage images separately from code pushes.</h2>
         <p>
-          The uploader creates a dedicated Git commit with your selected images, so you can publish assets from the browser without mixing them into your local code workflow.
+          The media manager creates dedicated image commits for uploads and deletions, so asset maintenance stays separate from your local code workflow.
         </p>
         <div class="uploader-points">
           <div class="uploader-point">
@@ -796,66 +1089,90 @@ $galleryMarkup
         Repository root files are available at <code>/filename.ext</code>, nested files at <code>/folder/filename.ext</code>.
       </footer>
     </main>
-    <div class="modal-shell" id="uploader-modal" aria-hidden="true">
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="uploader-title">
+    <div class="manager-shell" id="uploader-modal" aria-hidden="true">
+      <div class="manager-card" role="dialog" aria-modal="true" aria-labelledby="uploader-title">
         <div class="modal-head">
           <div>
-            <p class="eyebrow">Browser Uploader</p>
-            <h3 id="uploader-title">Upload images to this repository</h3>
+            <p class="eyebrow">Media Manager</p>
+            <h3 id="uploader-title">Upload or remove images in one place</h3>
             <p>
-              Use a fine-grained GitHub token with repository contents write access. The token stays only in this browser tab and is not saved by the page.
+              Use a fine-grained GitHub token with repository contents write access. Uploads and deletions create separate image-focused commits, so they stay independent from your local code pushes.
             </p>
+            <div class="mode-tabs">
+              <button class="mode-tab is-active" type="button" data-mode-tab="upload">Upload</button>
+              <button class="mode-tab" type="button" data-mode-tab="delete">Delete</button>
+            </div>
           </div>
           <button class="ghost-button" type="button" id="close-uploader">Close</button>
         </div>
-        <div class="modal-body">
-          <div class="upload-grid">
-            <div class="field">
-              <label for="github-token">GitHub token</label>
-              <input id="github-token" type="password" autocomplete="off" placeholder="github_pat_..." spellcheck="false">
+        <div class="manager-layout">
+          <section class="preview-panel">
+            <div class="preview-frame">
+              <button class="preview-arrow prev" type="button" id="preview-prev" aria-label="Previous image">&larr;</button>
+              <div class="preview-window" id="preview-window"></div>
+              <button class="preview-arrow next" type="button" id="preview-next" aria-label="Next image">&rarr;</button>
             </div>
-            <div class="field">
-              <label for="target-folder">Target folder</label>
-              <input id="target-folder" type="text" value="uploads" placeholder="uploads or movies">
-            </div>
-            <div class="field">
-              <label for="commit-message">Commit message</label>
-              <input id="commit-message" type="text" value="Upload images via gallery uploader" placeholder="Upload new images">
-            </div>
-          </div>
+            <div class="preview-meta" id="preview-meta"></div>
+            <div class="thumb-strip" id="thumb-strip"></div>
+          </section>
 
-          <div class="dropzone" id="dropzone">
-            <strong>Drop image files here</strong>
-            <p>or</p>
-            <div>
-              <button class="secondary-button" type="button" id="pick-files">Choose files</button>
-            </div>
-            <p>Supported: PNG, JPG, JPEG, GIF, WEBP, SVG, AVIF</p>
-            <input id="file-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif" hidden>
-          </div>
+          <section class="control-panel">
+            <div class="control-stack">
+              <div class="control-title">
+                <h4 id="control-title">Upload images</h4>
+                <p id="control-hint">Select new files, review them on the left, then commit them straight into the repository.</p>
+              </div>
 
-          <p class="inline-note">
-            Files larger than 100 KB are allowed but marked as large. Files larger than 200 KB are blocked before upload.
-          </p>
+              <div class="field">
+                <label for="github-token">GitHub token</label>
+                <input id="github-token" type="password" autocomplete="off" placeholder="github_pat_..." spellcheck="false">
+              </div>
 
-          <p class="upload-feedback" id="upload-feedback" role="status" aria-live="polite"></p>
+              <div class="field">
+                <label for="commit-message">Commit message</label>
+                <input id="commit-message" type="text" value="Upload images via media manager" placeholder="Upload images via media manager">
+              </div>
 
-          <section>
-            <h4>Selected files</h4>
-            <div class="selected-files" id="selected-files">
-              <div class="empty-state">
-                <p>No files selected yet.</p>
+              <div class="field">
+                <label for="target-folder" id="target-label">Destination folder</label>
+                <input id="target-folder" type="text" value="uploads" placeholder="uploads or movies">
+              </div>
+
+              <p class="mode-note" id="mode-note">
+                Files larger than 100 KB stay allowed and are marked as large. Files larger than 200 KB are blocked before upload.
+              </p>
+
+              <div id="upload-controls">
+                <div class="dropzone" id="dropzone">
+                  <strong>Drop image files into the stage</strong>
+                  <p>or pick them from your computer</p>
+                  <input id="file-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif" hidden>
+                </div>
+                <div class="dropzone-actions">
+                  <button class="ghost-button" type="button" id="pick-files">Choose files</button>
+                  <button class="ghost-button" type="button" id="clear-files">Clear selection</button>
+                </div>
+                <p class="selection-summary" id="selection-summary">No files selected yet.</p>
+              </div>
+
+              <div id="delete-controls" hidden>
+                <p class="selection-summary" id="delete-summary">Choose an existing image on the left, then remove it with its own delete commit.</p>
+                <div class="dropzone-actions">
+                  <a class="ghost-button" id="open-current-image" href="#" target="_blank" rel="noreferrer">Open current image</a>
+                  <button class="danger-button" type="button" id="delete-current">Delete current image</button>
+                </div>
+              </div>
+
+              <p class="manager-feedback" id="upload-feedback" role="status" aria-live="polite"></p>
+
+              <div class="control-actions">
+                <div class="status-note" id="status-note">Choose files to start an upload, or switch to delete mode to remove an existing image.</div>
+                <div class="action-group">
+                  <button class="secondary-button" type="button" id="start-upload">Upload images</button>
+                </div>
               </div>
             </div>
           </section>
-
-          <div class="modal-actions">
-            <div class="status-note" id="status-note">Nothing to upload yet.</div>
-            <div class="action-group">
-              <button class="ghost-button" type="button" id="clear-files">Clear</button>
-              <button class="secondary-button" type="button" id="start-upload">Upload to repository</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -865,27 +1182,46 @@ $galleryMarkup
       (function () {
         const config = window.galleryConfig;
         const state = {
+          mode: 'upload',
           files: [],
-          uploading: false
+          existingImages: Array.isArray(config.existingImages) ? config.existingImages.slice() : [],
+          currentUploadIndex: 0,
+          currentDeleteIndex: 0,
+          busy: false
         };
 
         const modal = document.getElementById('uploader-modal');
         const openButton = document.getElementById('open-uploader');
         const closeButton = document.getElementById('close-uploader');
+        const previewWindow = document.getElementById('preview-window');
+        const previewMeta = document.getElementById('preview-meta');
+        const thumbStrip = document.getElementById('thumb-strip');
+        const prevButton = document.getElementById('preview-prev');
+        const nextButton = document.getElementById('preview-next');
+        const modeTabs = Array.from(document.querySelectorAll('[data-mode-tab]'));
+        const controlTitle = document.getElementById('control-title');
+        const controlHint = document.getElementById('control-hint');
+        const targetLabel = document.getElementById('target-label');
         const pickFilesButton = document.getElementById('pick-files');
         const fileInput = document.getElementById('file-input');
         const dropzone = document.getElementById('dropzone');
-        const selectedFiles = document.getElementById('selected-files');
         const clearFilesButton = document.getElementById('clear-files');
+        const deleteCurrentButton = document.getElementById('delete-current');
+        const openCurrentImageLink = document.getElementById('open-current-image');
         const uploadButton = document.getElementById('start-upload');
         const feedback = document.getElementById('upload-feedback');
+        const selectionSummary = document.getElementById('selection-summary');
+        const deleteSummary = document.getElementById('delete-summary');
         const statusNote = document.getElementById('status-note');
         const tokenInput = document.getElementById('github-token');
         const folderInput = document.getElementById('target-folder');
         const commitMessageInput = document.getElementById('commit-message');
+        const modeNote = document.getElementById('mode-note');
+        const uploadControls = document.getElementById('upload-controls');
+        const deleteControls = document.getElementById('delete-controls');
 
         function escapeHtml(value) {
-          return value
+          return String(value || '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -895,6 +1231,29 @@ $galleryMarkup
 
         function formatKilobytes(size) {
           return (size / 1024).toFixed(1) + ' KB';
+        }
+
+        function formatDate(value) {
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) {
+            return 'Unknown date';
+          }
+
+          return date.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          });
+        }
+
+        function encodePathSegments(path) {
+          return String(path || '')
+            .split('/')
+            .filter(Boolean)
+            .map(function (segment) {
+              return encodeURIComponent(segment);
+            })
+            .join('/');
         }
 
         function getSizeState(size) {
@@ -909,115 +1268,362 @@ $galleryMarkup
           return 'ok';
         }
 
-        function getSizeDescription(file) {
-          const stateName = getSizeState(file.size);
-          if (stateName === 'error') {
-            return 'Blocked: larger than 200 KB';
+        function getStateLabel(sizeState) {
+          if (sizeState === 'error') {
+            return 'Too large';
           }
 
-          if (stateName === 'warning') {
-            return 'Large file: larger than 100 KB';
+          if (sizeState === 'warning') {
+            return 'Large file';
           }
 
           return 'Ready';
         }
 
         function sanitizeFolder(value) {
-          return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/').trim();
+          return String(value || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+|\/+$/g, '')
+            .replace(/\/{2,}/g, '/')
+            .trim();
+        }
+
+        function getSuggestedCommitMessage() {
+          return state.mode === 'upload' ? 'Upload images via media manager' : 'Delete image via media manager';
+        }
+
+        function syncSuggestedCommitMessage(force) {
+          const previousSuggested = commitMessageInput.dataset.suggestedValue || '';
+          const nextSuggested = getSuggestedCommitMessage();
+          const currentValue = commitMessageInput.value.trim();
+
+          if (force || currentValue === '' || currentValue === previousSuggested) {
+            commitMessageInput.value = nextSuggested;
+          }
+
+          commitMessageInput.dataset.suggestedValue = nextSuggested;
         }
 
         function setFeedback(kind, message) {
           feedback.textContent = message;
-          feedback.className = 'upload-feedback is-visible ' + kind;
+          feedback.className = 'manager-feedback is-visible ' + kind;
         }
 
         function clearFeedback() {
           feedback.textContent = '';
-          feedback.className = 'upload-feedback';
+          feedback.className = 'manager-feedback';
+        }
+
+        function createUploadEntry(file) {
+          return {
+            id: [file.name, file.size, file.lastModified, Math.random().toString(36).slice(2)].join('::'),
+            file: file,
+            name: file.name,
+            sizeBytes: file.size,
+            sizeLabel: formatKilobytes(file.size),
+            modifiedLabel: formatDate(file.lastModified),
+            modifiedIso: new Date(file.lastModified).toISOString(),
+            previewUrl: URL.createObjectURL(file),
+            state: getSizeState(file.size)
+          };
+        }
+
+        function releaseUploadEntries(entries) {
+          entries.forEach(function (entry) {
+            if (entry && entry.previewUrl) {
+              URL.revokeObjectURL(entry.previewUrl);
+            }
+          });
+        }
+
+        function getCurrentUploadItem() {
+          if (state.files.length === 0) {
+            return null;
+          }
+
+          state.currentUploadIndex = Math.max(0, Math.min(state.currentUploadIndex, state.files.length - 1));
+          return state.files[state.currentUploadIndex];
+        }
+
+        function getCurrentDeleteItem() {
+          if (state.existingImages.length === 0) {
+            return null;
+          }
+
+          state.currentDeleteIndex = Math.max(0, Math.min(state.currentDeleteIndex, state.existingImages.length - 1));
+          return state.existingImages[state.currentDeleteIndex];
+        }
+
+        function getCurrentItem() {
+          return state.mode === 'upload' ? getCurrentUploadItem() : getCurrentDeleteItem();
+        }
+
+        function getCurrentCollectionSize() {
+          return state.mode === 'upload' ? state.files.length : state.existingImages.length;
+        }
+
+        function getCurrentDestination(entry) {
+          const folder = sanitizeFolder(folderInput.value || config.defaultFolder);
+          return folder ? folder + '/' + entry.name : entry.name;
+        }
+
+        function sortExistingImages() {
+          state.existingImages.sort(function (left, right) {
+            return left.path.localeCompare(right.path);
+          });
         }
 
         function updateButtons() {
-          const hasFiles = state.files.length > 0;
-          const hasBlockedFiles = state.files.some(function (file) {
-            return getSizeState(file.size) === 'error';
+          const collectionSize = getCurrentCollectionSize();
+          const currentItem = getCurrentItem();
+          const hasBlockedFiles = state.files.some(function (entry) {
+            return entry.state === 'error';
           });
-
-          uploadButton.disabled = state.uploading || !hasFiles || hasBlockedFiles;
-          clearFilesButton.disabled = state.uploading || !hasFiles;
-
-          if (!hasFiles) {
-            statusNote.textContent = 'Nothing to upload yet.';
-            return;
-          }
-
-          if (hasBlockedFiles) {
-            statusNote.textContent = 'At least one file is above 200 KB and must be optimized before upload.';
-            return;
-          }
-
-          const warningCount = state.files.filter(function (file) {
-            return getSizeState(file.size) === 'warning';
+          const warningCount = state.files.filter(function (entry) {
+            return entry.state === 'warning';
           }).length;
 
-          if (warningCount > 0) {
-            statusNote.textContent = warningCount + ' file(s) are above 100 KB and will be marked as large.';
-            return;
-          }
+          prevButton.disabled = state.busy || collectionSize <= 1;
+          nextButton.disabled = state.busy || collectionSize <= 1;
+          closeButton.disabled = state.busy;
 
-          statusNote.textContent = 'All selected files are ready for upload.';
+          modeTabs.forEach(function (tab) {
+            tab.disabled = state.busy;
+            tab.classList.toggle('is-active', tab.getAttribute('data-mode-tab') === state.mode);
+          });
+
+          pickFilesButton.disabled = state.busy;
+          clearFilesButton.disabled = state.busy || state.files.length === 0;
+          uploadButton.disabled = state.busy || state.files.length === 0 || hasBlockedFiles;
+          deleteCurrentButton.disabled = state.busy || !currentItem || state.mode !== 'delete';
+          openCurrentImageLink.setAttribute('aria-disabled', currentItem ? 'false' : 'true');
+          openCurrentImageLink.style.pointerEvents = currentItem && state.mode === 'delete' ? 'auto' : 'none';
+          openCurrentImageLink.style.opacity = currentItem && state.mode === 'delete' ? '1' : '0.45';
+
+          if (state.mode === 'upload') {
+            if (state.files.length === 0) {
+              selectionSummary.textContent = 'No files selected yet.';
+              statusNote.textContent = 'Choose files or drag them into the manager.';
+            }
+            else if (hasBlockedFiles) {
+              selectionSummary.textContent = 'At least one selected file is above 200 KB and must be optimized.';
+              statusNote.textContent = 'Upload is blocked until oversized files are removed or compressed.';
+            }
+            else {
+              selectionSummary.textContent = state.files.length + ' file(s) selected' + (warningCount > 0 ? ', ' + warningCount + ' marked as large.' : '.');
+              statusNote.textContent = 'Upload will create one image-only commit and trigger a fresh deploy.';
+            }
+          }
+          else {
+            deleteSummary.textContent = currentItem
+              ? 'Delete "' + currentItem.name + '" from the repository with one separate commit.'
+              : 'No published images are available to delete.';
+            statusNote.textContent = currentItem
+              ? 'Deletion removes the currently selected image and starts a new deploy.'
+              : 'Nothing available to delete right now.';
+          }
         }
 
-        function renderFiles() {
-          if (state.files.length === 0) {
-            selectedFiles.innerHTML = '<div class="empty-state"><p>No files selected yet.</p></div>';
-            updateButtons();
+        function renderPreview() {
+          const currentItem = getCurrentItem();
+          if (!currentItem) {
+            previewWindow.innerHTML = '<div class="preview-placeholder"><strong>No image selected</strong><span>Add files in upload mode or choose an existing image in delete mode.</span></div>';
             return;
           }
 
-          selectedFiles.innerHTML = state.files.map(function (file) {
-            const stateName = getSizeState(file.size);
-            const className = stateName === 'ok' ? 'selected-file' : 'selected-file ' + stateName;
-            return '<article class="' + className + '">' +
-              '<div><strong>' + escapeHtml(file.name) + '</strong><span>' + formatKilobytes(file.size) + ' · ' + escapeHtml(getSizeDescription(file)) + '</span></div>' +
-              '<div class="badge">' + escapeHtml(stateName === 'ok' ? 'ready' : stateName) + '</div>' +
+          const previewUrl = state.mode === 'upload' ? currentItem.previewUrl : currentItem.publicUrl;
+          const badgeMarkup = currentItem.state === 'ok'
+            ? ''
+            : '<div class="preview-badge ' + currentItem.state + '">' + escapeHtml(getStateLabel(currentItem.state)) + '</div>';
+
+          previewWindow.innerHTML = badgeMarkup + '<img class="preview-asset" src="' + escapeHtml(previewUrl) + '" alt="' + escapeHtml(currentItem.name) + '">';
+        }
+
+        function renderMeta() {
+          const currentItem = getCurrentItem();
+          if (!currentItem) {
+            previewMeta.innerHTML = '<div class="meta-pair"><span>Status</span><strong>Nothing selected</strong></div>';
+            return;
+          }
+
+          const pairs = state.mode === 'upload'
+            ? [
+                ['Name', currentItem.name],
+                ['Size', currentItem.sizeLabel],
+                ['Date', currentItem.modifiedLabel],
+                ['Destination', getCurrentDestination(currentItem)]
+              ]
+            : [
+                ['Name', currentItem.name],
+                ['Size', currentItem.sizeLabel],
+                ['Date', currentItem.modifiedLabel],
+                ['Path', currentItem.path]
+              ];
+
+          previewMeta.innerHTML = pairs.map(function (pair) {
+            return '<div class="meta-pair"><span>' + escapeHtml(pair[0]) + '</span><strong>' + escapeHtml(pair[1]) + '</strong></div>';
+          }).join('');
+        }
+
+        function renderThumbStrip() {
+          const items = state.mode === 'upload' ? state.files : state.existingImages;
+          const activeIndex = state.mode === 'upload' ? state.currentUploadIndex : state.currentDeleteIndex;
+
+          if (items.length === 0) {
+            thumbStrip.innerHTML = '<div class="strip-empty">' + (state.mode === 'upload'
+              ? 'Your selected files will appear here.'
+              : 'There are no published images available for deletion yet.') + '</div>';
+            return;
+          }
+
+          thumbStrip.innerHTML = items.map(function (item, index) {
+            const previewUrl = state.mode === 'upload' ? item.previewUrl : item.publicUrl;
+            const cardClass = ['thumb-card', item.state];
+            if (index === activeIndex) {
+              cardClass.push('is-active');
+            }
+
+            const removeButton = state.mode === 'upload'
+              ? '<button class="thumb-remove" type="button" data-remove-upload="' + escapeHtml(item.id) + '" aria-label="Remove selected file">&times;</button>'
+              : '';
+
+            return '<article class="' + cardClass.join(' ') + '" data-thumb-index="' + index + '">' +
+              removeButton +
+              '<img src="' + escapeHtml(previewUrl) + '" alt="' + escapeHtml(item.name) + '">' +
+              '<span class="thumb-label">' + escapeHtml(item.name) + '</span>' +
+              '<span class="thumb-sub">' + escapeHtml(item.sizeLabel) + ' / ' + escapeHtml(item.modifiedLabel) + '</span>' +
               '</article>';
           }).join('');
+        }
+
+        function renderModeCopy() {
+          if (state.mode === 'upload') {
+            controlTitle.textContent = 'Upload images';
+            controlHint.textContent = 'Select new files, review them on the left, then commit them straight into the repository.';
+            targetLabel.textContent = 'Destination folder';
+            folderInput.readOnly = false;
+            folderInput.placeholder = 'uploads or movies';
+            if (!folderInput.value.trim()) {
+              folderInput.value = config.defaultFolder;
+            }
+            modeNote.textContent = 'Files larger than 100 KB stay allowed and are marked as large. Files larger than 200 KB are blocked before upload.';
+            uploadControls.hidden = false;
+            deleteControls.hidden = true;
+            uploadButton.hidden = false;
+          }
+          else {
+            const currentDeleteItem = getCurrentDeleteItem();
+            controlTitle.textContent = 'Delete published images';
+            controlHint.textContent = 'Pick an existing image on the left and remove it with a dedicated delete commit.';
+            targetLabel.textContent = 'Selected image path';
+            folderInput.readOnly = true;
+            folderInput.value = currentDeleteItem ? currentDeleteItem.path : '';
+            modeNote.textContent = 'Deletion removes the selected file from the repository and triggers a new GitHub Pages deploy.';
+            uploadControls.hidden = true;
+            deleteControls.hidden = false;
+            uploadButton.hidden = true;
+          }
+        }
+
+        function renderManager() {
+          renderModeCopy();
+          renderPreview();
+          renderMeta();
+          renderThumbStrip();
+
+          const currentDeleteItem = getCurrentDeleteItem();
+          openCurrentImageLink.href = currentDeleteItem ? currentDeleteItem.publicUrl : '#';
+
+          if (state.mode === 'upload') {
+            folderInput.value = folderInput.value.trim() ? folderInput.value : config.defaultFolder;
+          }
 
           updateButtons();
         }
 
         function mergeFiles(fileList) {
           const nextFiles = state.files.slice();
-          const seen = new Set(nextFiles.map(function (file) {
-            return file.name + '::' + file.size + '::' + file.lastModified;
+          const seen = new Set(nextFiles.map(function (entry) {
+            return entry.name + '::' + entry.sizeBytes + '::' + entry.file.lastModified;
           }));
 
           Array.from(fileList).forEach(function (file) {
             const key = file.name + '::' + file.size + '::' + file.lastModified;
             if (!seen.has(key)) {
               seen.add(key);
-              nextFiles.push(file);
+              nextFiles.push(createUploadEntry(file));
             }
           });
 
           state.files = nextFiles;
+          if (state.files.length > 0) {
+            state.currentUploadIndex = state.files.length - 1;
+          }
           clearFeedback();
-          renderFiles();
+          renderManager();
         }
 
-        function openModal() {
+        function removeUploadEntry(entryId) {
+          const removedEntries = state.files.filter(function (entry) {
+            return entry.id === entryId;
+          });
+
+          releaseUploadEntries(removedEntries);
+          state.files = state.files.filter(function (entry) {
+            return entry.id !== entryId;
+          });
+          state.currentUploadIndex = Math.max(0, Math.min(state.currentUploadIndex, state.files.length - 1));
+          renderManager();
+        }
+
+        function clearUploadSelection() {
+          releaseUploadEntries(state.files);
+          state.files = [];
+          state.currentUploadIndex = 0;
+          fileInput.value = '';
+          clearFeedback();
+          renderManager();
+        }
+
+        function openModal(mode, imagePath) {
+          if (mode) {
+            state.mode = mode;
+          }
+
+          if (imagePath && state.mode === 'delete') {
+            const matchIndex = state.existingImages.findIndex(function (image) {
+              return image.path === imagePath;
+            });
+            if (matchIndex >= 0) {
+              state.currentDeleteIndex = matchIndex;
+            }
+          }
+
+          syncSuggestedCommitMessage(false);
+          clearFeedback();
           modal.classList.add('is-open');
           modal.setAttribute('aria-hidden', 'false');
-          clearFeedback();
+          renderManager();
         }
 
         function closeModal() {
-          if (state.uploading) {
+          if (state.busy) {
             return;
           }
 
           modal.classList.remove('is-open');
           modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function setMode(mode) {
+          if (state.busy) {
+            return;
+          }
+
+          state.mode = mode;
+          syncSuggestedCommitMessage(false);
+          clearFeedback();
+          renderManager();
         }
 
         async function githubRequest(path, options, token) {
@@ -1068,8 +1674,7 @@ $galleryMarkup
 
         async function uploadFiles() {
           const token = tokenInput.value.trim();
-          const folder = sanitizeFolder(folderInput.value || config.defaultFolder);
-          const commitMessage = (commitMessageInput.value || '').trim() || 'Upload images via gallery uploader';
+          const commitMessage = commitMessageInput.value.trim() || getSuggestedCommitMessage();
 
           if (!config.owner || !config.repo) {
             throw new Error('Repository information is missing from this page configuration.');
@@ -1083,19 +1688,19 @@ $galleryMarkup
             throw new Error('Choose at least one image to upload.');
           }
 
-          const blockedFile = state.files.find(function (file) {
-            return getSizeState(file.size) === 'error';
+          const blockedFile = state.files.find(function (entry) {
+            return entry.state === 'error';
           });
           if (blockedFile) {
             throw new Error('The file "' + blockedFile.name + '" is larger than 200 KB.');
           }
 
-          const finalPaths = state.files.map(function (file) {
-            return folder ? folder + '/' + file.name : file.name;
+          const finalPaths = state.files.map(function (entry) {
+            return getCurrentDestination(entry);
           });
 
           if ((new Set(finalPaths)).size !== finalPaths.length) {
-            throw new Error('Two selected files resolve to the same target path.');
+            throw new Error('Two selected files resolve to the same destination path.');
           }
 
           setFeedback('info', 'Uploading files to GitHub...');
@@ -1108,11 +1713,11 @@ $galleryMarkup
 
           const entries = [];
           for (let index = 0; index < state.files.length; index += 1) {
-            const file = state.files[index];
+            const entry = state.files[index];
             const blob = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/git/blobs', {
               method: 'POST',
               body: {
-                content: await fileToBase64(file),
+                content: await fileToBase64(entry.file),
                 encoding: 'base64'
               }
             }, token);
@@ -1150,24 +1755,156 @@ $galleryMarkup
             }
           }, token);
 
-          const uploadedSummary = finalPaths.join(', ');
+          const nowIso = new Date().toISOString();
+          const uploadedEntries = state.files.map(function (entry, index) {
+            const finalPath = finalPaths[index];
+            const encodedPath = encodePathSegments(finalPath);
+            return {
+              name: entry.name,
+              path: finalPath,
+              urlPath: encodedPath,
+              publicUrl: './' + encodedPath,
+              sizeBytes: entry.sizeBytes,
+              sizeLabel: entry.sizeLabel,
+              modifiedLabel: formatDate(nowIso),
+              modifiedIso: nowIso,
+              state: entry.state
+            };
+          });
+
+          const uploadedPathSet = new Set(uploadedEntries.map(function (entry) {
+            return entry.path;
+          }));
+
+          state.existingImages = state.existingImages.filter(function (entry) {
+            return !uploadedPathSet.has(entry.path);
+          }).concat(uploadedEntries);
+          sortExistingImages();
+
+          const uploadedSummary = uploadedEntries.map(function (entry) {
+            return entry.path;
+          }).join(', ');
+
+          clearUploadSelection();
           setFeedback('success', 'Upload committed successfully. GitHub Pages will refresh after deployment. Uploaded: ' + uploadedSummary);
-          state.files = [];
-          fileInput.value = '';
-          renderFiles();
+          renderManager();
         }
 
-        openButton.addEventListener('click', openModal);
+        async function deleteCurrentImage() {
+          const token = tokenInput.value.trim();
+          const commitMessage = commitMessageInput.value.trim() || getSuggestedCommitMessage();
+          const currentItem = getCurrentDeleteItem();
+
+          if (!currentItem) {
+            throw new Error('Choose an existing image before deleting.');
+          }
+
+          if (!token) {
+            throw new Error('Add a GitHub token before deleting.');
+          }
+
+          const encodedContentPath = encodePathSegments(currentItem.path);
+          setFeedback('info', 'Deleting the selected image from GitHub...');
+
+          const fileData = await githubRequest('/repos/' + config.owner + '/' + config.repo + '/contents/' + encodedContentPath + '?ref=' + encodeURIComponent(config.branch), {}, token);
+          await githubRequest('/repos/' + config.owner + '/' + config.repo + '/contents/' + encodedContentPath, {
+            method: 'DELETE',
+            body: {
+              message: commitMessage,
+              sha: fileData.sha,
+              branch: config.branch
+            }
+          }, token);
+
+          state.existingImages = state.existingImages.filter(function (entry) {
+            return entry.path !== currentItem.path;
+          });
+          state.currentDeleteIndex = Math.max(0, Math.min(state.currentDeleteIndex, state.existingImages.length - 1));
+          setFeedback('success', 'Delete committed successfully. GitHub Pages will refresh after deployment. Removed: ' + currentItem.path);
+          renderManager();
+        }
+
+        openButton.addEventListener('click', function () {
+          openModal('upload');
+        });
+
         closeButton.addEventListener('click', closeModal);
         modal.addEventListener('click', function (event) {
           if (event.target === modal) {
             closeModal();
           }
         });
+
         document.addEventListener('keydown', function (event) {
           if (event.key === 'Escape') {
             closeModal();
           }
+        });
+
+        document.addEventListener('click', function (event) {
+          const manageTrigger = event.target.closest('[data-open-manager]');
+          if (!manageTrigger) {
+            return;
+          }
+
+          event.preventDefault();
+          openModal(manageTrigger.getAttribute('data-open-manager') || 'upload', manageTrigger.getAttribute('data-image-path') || '');
+        });
+
+        modeTabs.forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            setMode(tab.getAttribute('data-mode-tab'));
+          });
+        });
+
+        prevButton.addEventListener('click', function () {
+          if (state.mode === 'upload' && state.files.length > 1) {
+            state.currentUploadIndex = (state.currentUploadIndex - 1 + state.files.length) % state.files.length;
+          }
+          else if (state.mode === 'delete' && state.existingImages.length > 1) {
+            state.currentDeleteIndex = (state.currentDeleteIndex - 1 + state.existingImages.length) % state.existingImages.length;
+          }
+
+          renderManager();
+        });
+
+        nextButton.addEventListener('click', function () {
+          if (state.mode === 'upload' && state.files.length > 1) {
+            state.currentUploadIndex = (state.currentUploadIndex + 1) % state.files.length;
+          }
+          else if (state.mode === 'delete' && state.existingImages.length > 1) {
+            state.currentDeleteIndex = (state.currentDeleteIndex + 1) % state.existingImages.length;
+          }
+
+          renderManager();
+        });
+
+        thumbStrip.addEventListener('click', function (event) {
+          const removeButton = event.target.closest('[data-remove-upload]');
+          if (removeButton) {
+            event.stopPropagation();
+            removeUploadEntry(removeButton.getAttribute('data-remove-upload'));
+            return;
+          }
+
+          const thumbCard = event.target.closest('[data-thumb-index]');
+          if (!thumbCard) {
+            return;
+          }
+
+          const thumbIndex = Number(thumbCard.getAttribute('data-thumb-index'));
+          if (Number.isNaN(thumbIndex)) {
+            return;
+          }
+
+          if (state.mode === 'upload') {
+            state.currentUploadIndex = thumbIndex;
+          }
+          else {
+            state.currentDeleteIndex = thumbIndex;
+          }
+
+          renderManager();
         });
 
         pickFilesButton.addEventListener('click', function () {
@@ -1176,6 +1913,12 @@ $galleryMarkup
 
         fileInput.addEventListener('change', function (event) {
           mergeFiles(event.target.files);
+        });
+
+        folderInput.addEventListener('input', function () {
+          if (state.mode === 'upload') {
+            renderManager();
+          }
         });
 
         ['dragenter', 'dragover'].forEach(function (eventName) {
@@ -1196,35 +1939,50 @@ $galleryMarkup
         });
 
         clearFilesButton.addEventListener('click', function () {
-          if (state.uploading) {
-            return;
+          if (!state.busy) {
+            clearUploadSelection();
           }
-
-          state.files = [];
-          fileInput.value = '';
-          clearFeedback();
-          renderFiles();
         });
 
         uploadButton.addEventListener('click', async function () {
-          if (state.uploading) {
+          if (state.busy) {
             return;
           }
 
-          state.uploading = true;
-          updateButtons();
+          state.busy = true;
+          renderManager();
 
           try {
             await uploadFiles();
           } catch (error) {
             setFeedback('error', error.message || 'Upload failed.');
           } finally {
-            state.uploading = false;
-            updateButtons();
+            state.busy = false;
+            renderManager();
           }
         });
 
-        renderFiles();
+        deleteCurrentButton.addEventListener('click', async function () {
+          if (state.busy) {
+            return;
+          }
+
+          state.busy = true;
+          renderManager();
+
+          try {
+            await deleteCurrentImage();
+          } catch (error) {
+            setFeedback('error', error.message || 'Delete failed.');
+          } finally {
+            state.busy = false;
+            renderManager();
+          }
+        });
+
+        sortExistingImages();
+        syncSuggestedCommitMessage(true);
+        renderManager();
       }());
     </script>
   </body>
